@@ -18,17 +18,12 @@ namespace QuantConnect.DataProcessing;
 public class BybitFundingRateDownloader : IDisposable
 {
     private const string BybitApiEndpoint = "https://api.bybit.com";
-
-
-
+    
     private static readonly JsonSerializerSettings SerializerSettings = new JsonSerializerSettings
     {
         ContractResolver = new CamelCasePropertyNamesContractResolver()
     };
-
-
-
-
+    
     private readonly DateTime? _deploymentDate;
     private readonly string _destinationFolder;
     private readonly string _existingInDataFolder;
@@ -88,8 +83,7 @@ public class BybitFundingRateDownloader : IDisposable
             // USDC pairs have PERP in the name instead of USDC
             SaveContentToFile(_destinationFolder, kvp.Key.Replace("PERP", "USDC"), kvp.Value);
         }
-
-
+        
         return true;
     }
 
@@ -100,8 +94,9 @@ public class BybitFundingRateDownloader : IDisposable
 
         var result = new List<BybitFundingRate>();
 
-        Parallel.ForEach(_perpetualFuturesExchangeInfos, exchangeInfo =>
+        Parallel.ForEach(_perpetualFuturesExchangeInfos.Where(x => x.LaunchTimestamp <= end), exchangeInfo =>
         {
+            
             _indexGate.WaitToProceed();
             var url =
                 $"{BybitApiEndpoint}/v5/market/funding/history?limit=200&symbol={exchangeInfo.Symbol}&startTime={start}&endTime={end}&category={exchangeInfo.Category}";
@@ -198,6 +193,7 @@ public class BybitFundingRateDownloader : IDisposable
         foreach (var exchangeInfo in linear.Result.List)
         {
             exchangeInfo.Category = linear.Result.Category;
+            exchangeInfo.LaunchTimestamp = decimal.Parse(exchangeInfo.LaunchTime, CultureInfo.InvariantCulture);
             yield return exchangeInfo;
         }
 
@@ -316,6 +312,18 @@ public class BybitFundingRateDownloader : IDisposable
         /// </summary>
         public string ContractType { get; set; }
 
+        /// <summary>
+        /// Launch time
+        /// </summary>
+        public string LaunchTime { get; set; }
+        
+        /// <summary>
+        /// Launch timestamp (ms)
+        /// </summary>
+        [JsonIgnore]
+        public decimal LaunchTimestamp { get; set; }
+        
+        
         /// <summary>
         /// Product category
         /// </summary>
