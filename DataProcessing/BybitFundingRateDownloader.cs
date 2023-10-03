@@ -1,4 +1,19 @@
-﻿using System;
+﻿/*
+ * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+ * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -6,7 +21,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using QuantConnect;
 using QuantConnect.Logging;
 using QuantConnect.Util;
 
@@ -18,12 +32,12 @@ namespace QuantConnect.DataProcessing;
 public class BybitFundingRateDownloader : IDisposable
 {
     private const string BybitApiEndpoint = "https://api.bybit.com";
-    
-    private static readonly JsonSerializerSettings SerializerSettings = new JsonSerializerSettings
+
+    private static readonly JsonSerializerSettings SerializerSettings = new()
     {
         ContractResolver = new CamelCasePropertyNamesContractResolver()
     };
-    
+
     private readonly DateTime? _deploymentDate;
     private readonly string _destinationFolder;
     private readonly string _existingInDataFolder;
@@ -83,7 +97,7 @@ public class BybitFundingRateDownloader : IDisposable
             // USDC pairs have PERP in the name instead of USDC
             SaveContentToFile(_destinationFolder, kvp.Key.Replace("PERP", "USDC"), kvp.Value);
         }
-        
+
         return true;
     }
 
@@ -96,7 +110,6 @@ public class BybitFundingRateDownloader : IDisposable
 
         Parallel.ForEach(_perpetualFuturesExchangeInfos.Where(x => x.LaunchTimestamp <= end), exchangeInfo =>
         {
-            
             _indexGate.WaitToProceed();
             var url =
                 $"{BybitApiEndpoint}/v5/market/funding/history?limit=200&symbol={exchangeInfo.Symbol}&startTime={start}&endTime={end}&category={exchangeInfo.Category}";
@@ -106,9 +119,9 @@ public class BybitFundingRateDownloader : IDisposable
             {
                 try
                 {
-                    result.AddRange(JsonConvert
-                        .DeserializeObject<ByBitResponse<BybitListResult<BybitFundingRate>>>(data, SerializerSettings)
-                        .Result.List);
+                    var response = JsonConvert
+                        .DeserializeObject<ByBitResponse<BybitListResult<BybitFundingRate>>>(data, SerializerSettings);
+                    result.AddRange(response.Result.List);
                 }
                 catch (Exception)
                 {
@@ -130,7 +143,7 @@ public class BybitFundingRateDownloader : IDisposable
         else
         {
             // everything
-            return Time.EachDay(new DateTime(2019, 9, 13), DateTime.UtcNow.Date);
+            return Time.EachDay(new DateTime(2019, 11, 14), DateTime.UtcNow.Date);
         }
     }
 
@@ -183,30 +196,37 @@ public class BybitFundingRateDownloader : IDisposable
 
     private IEnumerable<BybitInstrumentInfo> GetExchangeInfo()
     {
-        var url = $"{BybitApiEndpoint}/v5/market/instruments-info?limit=1000&status=Trading";
-        _indexGate.WaitToProceed();
-        var data = $"{url}&category=linear".DownloadData();
+        return GetExchangeInfo("linear").Concat(GetExchangeInfo("inverse"));
+    }
 
-        var linear =
-            JsonConvert.DeserializeObject<ByBitResponse<BybitListResult<BybitInstrumentInfo>>>(data,
-                SerializerSettings);
-        foreach (var exchangeInfo in linear.Result.List)
+    private IEnumerable<BybitInstrumentInfo> GetExchangeInfo(string category)
+    {
+        string pageCursor, nextPageCursor = null;
+        do
         {
-            exchangeInfo.Category = linear.Result.Category;
-            exchangeInfo.LaunchTimestamp = decimal.Parse(exchangeInfo.LaunchTime, CultureInfo.InvariantCulture);
-            yield return exchangeInfo;
-        }
+            pageCursor = nextPageCursor;
 
-        data = $"{url}&category=inverse".DownloadData();
-        var inverse =
-            JsonConvert.DeserializeObject<ByBitResponse<BybitListResult<BybitInstrumentInfo>>>(data,
-                SerializerSettings);
+            var url = $"{BybitApiEndpoint}/v5/market/instruments-info?limit=1000&status=Trading&category={category}";
+            if (!string.IsNullOrEmpty(pageCursor))
+            {
+                url += $"&cursor={pageCursor}";
+            }
 
-        foreach (var exchangeInfo in inverse.Result.List)
-        {
-            exchangeInfo.Category = inverse.Result.Category;
-            yield return exchangeInfo;
-        }
+            _indexGate.WaitToProceed();
+            var data = url.DownloadData();
+            var response = JsonConvert
+                .DeserializeObject<ByBitResponse<BybitListResult<BybitInstrumentInfo>>>(data, SerializerSettings);
+
+            foreach (var exchangeInfo in response.Result.List)
+            {
+                exchangeInfo.Category = response.Result.Category;
+                exchangeInfo.LaunchTimestamp = decimal.Parse(exchangeInfo.LaunchTime, CultureInfo.InvariantCulture);
+
+                yield return exchangeInfo;
+            }
+
+            nextPageCursor = response.Result.NextPageCursor;
+        } while (!string.IsNullOrEmpty(nextPageCursor) && pageCursor != nextPageCursor);
     }
 
     /// <summary>
@@ -295,6 +315,12 @@ public class BybitFundingRateDownloader : IDisposable
         /// The result items
         /// </summary>
         public T[] List { get; set; }
+
+
+        /// <summary>
+        /// Cursor used for pagination
+        /// </summary>
+        public string NextPageCursor { get; set; }
     }
 
     /// <summary>
@@ -316,14 +342,13 @@ public class BybitFundingRateDownloader : IDisposable
         /// Launch time
         /// </summary>
         public string LaunchTime { get; set; }
-        
+
         /// <summary>
         /// Launch timestamp (ms)
         /// </summary>
         [JsonIgnore]
         public decimal LaunchTimestamp { get; set; }
-        
-        
+
         /// <summary>
         /// Product category
         /// </summary>
