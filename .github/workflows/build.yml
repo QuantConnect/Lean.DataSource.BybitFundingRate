@@ -21,4 +21,4 @@ jobs:
           options: --workdir /__w/Lean.DataSource.BybitFundingRate/Lean.DataSource.BybitFundingRate -v /home/runner/work:/__w
 
       - name: BuildDataSource
-        run: dotnet build ./QuantConnect.DataSource.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
+        run: dotnet build ./DataProcessing/DataProcessing.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
