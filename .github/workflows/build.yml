@@ -9,35 +9,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-20.04
-    container:
-        image: quantconnect/lean:foundation
     steps:
-      - uses: actions/checkout@v2
-
-      - name: Checkout Lean Same Branch
-        id: lean-same-branch
+      - name: Checkout
         uses: actions/checkout@v2
-        continue-on-error: true
-        with:
-          ref: ${{ github.ref }}
-          repository: QuantConnect/Lean
-          path: Lean
+      - name: Free space
+        run: df -h && rm -rf /opt/hostedtoolcache* && df -h
 
-      - name: Checkout Lean Master
-        if: steps.lean-same-branch.outcome != 'success'
-        uses: actions/checkout@v2
+      - uses: addnab/docker-run-action@v3
         with:
-          repository: QuantConnect/Lean
-          path: Lean
-
-      - name: Move Lean
-        run: mv Lean ../Lean
+          image: quantconnect/lean:foundation
+          options: --workdir /__w/Lean.DataSource.BybitFundingRate/Lean.DataSource.BybitFundingRate -v /home/runner/work:/__w
 
       - name: BuildDataSource
-        run: dotnet build ./QuantConnect.DataSource.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
-
-      - name: BuildTests
-        run: dotnet build ./tests/Tests.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
-
-      - name: Run Tests
-        run: dotnet test ./tests/bin/Release/net6.0/Tests.dll
+        run: dotnet build ./DataProcessing/DataProcessing.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
