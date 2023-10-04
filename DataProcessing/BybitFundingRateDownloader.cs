@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -75,9 +76,10 @@ public class BybitFundingRateDownloader : IDisposable
     public bool Run()
     {
         var ratePerSymbol = new Dictionary<string, Dictionary<DateTime, decimal>>();
+        using HttpClient client = new();
         foreach (var date in GetProcessingDates())
         {
-            foreach (var apiFundingRate in GetData(date))
+            foreach (var apiFundingRate in GetData(date, client))
             {
                 var fundingTimestamp = long.Parse(apiFundingRate.FundingRateTimestamp, CultureInfo.InvariantCulture);
                 var fundingTime = Time.UnixMillisecondTimeStampToDateTime(fundingTimestamp);
@@ -101,7 +103,7 @@ public class BybitFundingRateDownloader : IDisposable
         return true;
     }
 
-    private IEnumerable<BybitFundingRate> GetData(DateTime date)
+    private IEnumerable<BybitFundingRate> GetData(DateTime date, HttpClient client)
     {
         var start = (long)Time.DateTimeToUnixTimeStampMilliseconds(date.Date);
         var end = (long)Time.DateTimeToUnixTimeStampMilliseconds(date.AddDays(1).Date);
@@ -113,7 +115,7 @@ public class BybitFundingRateDownloader : IDisposable
             _indexGate.WaitToProceed();
             var url =
                 $"{BybitApiEndpoint}/v5/market/funding/history?limit=200&symbol={exchangeInfo.Symbol}&startTime={start}&endTime={end}&category={exchangeInfo.Category}";
-            var data = url.DownloadData();
+            var data = client.DownloadData(url);
 
             lock (result)
             {
