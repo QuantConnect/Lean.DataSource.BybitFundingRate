@@ -6,25 +6,22 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
+    container:
+        image: quantconnect/lean:foundation
+        options: --cpus 12 --memory 12g
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Liberate disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
 
-      - uses: addnab/docker-run-action@v3
-        with:
-          image: quantconnect/lean:foundation
-          options: --workdir /__w/Lean.DataSource.BybitFundingRate/Lean.DataSource.BybitFundingRate -v /home/runner/work:/__w
-          shell: bash
-          run: |
-            # BuildDataProcessing
-            dotnet build ./DataProcessing/DataProcessing.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
+      - name: Run build and tests
+        run: |
+          # BuildDataProcessing
+          dotnet build ./DataProcessing/DataProcessing.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
+
